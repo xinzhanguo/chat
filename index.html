@@ -1,29 +1,45 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebSocket Chat</title>
+    <title>Multi-Room Chat</title>
 </head>
 <body>
+    <div>
+        <input type="text" id="roomID" placeholder="输入房间ID" value="room1">
+        <button onclick="connect()">连接房间</button>
+    </div>
     <div id="chat">
         <ul id="messages"></ul>
     </div>
-    <input id="input" type="text" />
-    <button onclick="sendMessage()">Send</button>
+    <input type="text" id="messageInput">
+    <button onclick="sendMessage()">发送</button>
 
     <script>
-        const ws = new WebSocket("ws://localhost:8080/ws");
+        let ws = null;
 
-        ws.onmessage = function(event) {
-            const messages = document.getElementById("messages");
-            const message = document.createElement("li");
-            message.textContent = event.data;
-            messages.appendChild(message);
-        };
+        function connect() {
+            const roomID = document.getElementById('roomID').value;
+            if (ws) ws.close();
+            
+            ws = new WebSocket(`ws://localhost:8080/ws/${roomID}`);
+            
+            ws.onmessage = function(event) {
+                const li = document.createElement('li');
+                li.textContent = event.data;
+                document.getElementById('messages').appendChild(li);
+            };
+
+            ws.onclose = function() {
+                alert('连接已关闭');
+            };
+        }
 
         function sendMessage() {
-            const input = document.getElementById("input");
-            ws.send(input.value);
-            input.value = "";
+            const input = document.getElementById('messageInput');
+            if (ws && input.value) {
+                ws.send(input.value);
+                input.value = '';
+            }
         }
     </script>
 </body>
