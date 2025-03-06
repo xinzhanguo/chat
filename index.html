@@ -1,46 +1,288 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
+
 <head>
-    <title>Multi-Room Chat</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多房间聊天室</title>
+    <style>
+        :root {
+            --primary-color: #1976D2;
+            --secondary-color: #f0f0f0;
+            --success-color: #4CAF50;
+            --error-color: #f44336;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .status-indicator.connected {
+            background: var(--success-color);
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 60vh;
+        }
+
+        #messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            margin: 0;
+            list-style: none;
+        }
+
+        .message-item {
+            margin: 8px 0;
+            display: flex;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 20px;
+            background: var(--secondary-color);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .message-item.self {
+            justify-content: flex-end;
+        }
+
+        .message-item.self .message-bubble {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            padding: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            background: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                border-radius: 0;
+            }
+
+            .chat-container {
+                height: 70vh;
+            }
+        }
+    </style>
 </head>
+
 <body>
-    <div>
-        <input type="text" id="roomID" placeholder="输入房间ID" value="room1">
-        <button onclick="connect()">连接房间</button>
+    <div class="container">
+        <div class="header">
+            <h1>多房间聊天室</h1>
+            <div class="status-bar">
+                <div class="status-indicator"></div>
+                <span id="statusText">未连接</span>
+            </div>
+        </div>
+
+        <div class="chat-container">
+            <ul id="messages"></ul>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="roomID" placeholder="输入房间ID" value="room1">
+            <button onclick="connect()" id="connectBtn">连接</button>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="messageInput" placeholder="输入消息..." disabled>
+            <button onclick="sendMessage()" id="sendBtn" disabled>发送</button>
+        </div>
     </div>
-    <div id="chat">
-        <ul id="messages"></ul>
-    </div>
-    <input type="text" id="messageInput">
-    <button onclick="sendMessage()">发送</button>
 
     <script>
         let ws = null;
+        const statusIndicator = document.querySelector('.status-indicator');
+        const statusText = document.getElementById('statusText');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const connectBtn = document.getElementById('connectBtn');
+
+        function updateStatus(connected) {
+            statusIndicator.className = `status-indicator ${connected ? 'connected' : ''}`;
+            statusText.textContent = connected ? '已连接' : '未连接';
+            messageInput.disabled = !connected;
+            sendBtn.disabled = !connected;
+        }
 
         function connect() {
-            const roomID = document.getElementById('roomID').value;
+            const roomID = document.getElementById('roomID').value.trim();
+            if (!roomID) {
+                alert('请输入房间ID');
+                return;
+            }
+
             if (ws) ws.close();
-            
+
+            connectBtn.disabled = true;
+            connectBtn.textContent = '连接中...';
+
             ws = new WebSocket(`ws://localhost:8080/ws/${roomID}`);
-            
-            ws.onmessage = function(event) {
-                const li = document.createElement('li');
-                li.textContent = event.data;
-                document.getElementById('messages').appendChild(li);
+
+            ws.onopen = () => {
+                updateStatus(true);
+                connectBtn.disabled = false;
+                connectBtn.textContent = '重新连接';
+                messageInput.focus();
             };
 
-            ws.onclose = function() {
-                alert('连接已关闭');
+            ws.onmessage = function (event) {
+                const messages = document.getElementById('messages');
+                const li = document.createElement('li');
+                li.className = 'message-item';
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+                bubble.textContent = event.data;
+
+                li.appendChild(bubble);
+                messages.appendChild(li);
+
+                // 自动滚动到底部
+                messages.scrollTop = messages.scrollHeight;
+            };
+
+            ws.onclose = () => {
+                updateStatus(false);
+                connectBtn.disabled = false;
+                connectBtn.textContent = '连接';
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+                alert('连接发生错误');
             };
         }
 
         function sendMessage() {
             const input = document.getElementById('messageInput');
-            if (ws && input.value) {
-                ws.send(input.value);
+            const message = input.value.trim();
+
+            if (ws && message) {
+                ws.send(message);
                 input.value = '';
+
+                // 本地立即显示（带特殊样式）
+                const messages = document.getElementById('messages');
+                const li = document.createElement('li');
+                li.className = 'message-item self';
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+                bubble.textContent = message;
+
+                li.appendChild(bubble);
+                messages.appendChild(li);
+                messages.scrollTop = messages.scrollHeight;
             }
         }
+
+        // 回车发送支持
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // 初始化连接
+        connect();
     </script>
 </body>
+
 </html>

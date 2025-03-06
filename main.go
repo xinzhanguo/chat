@@ -23,26 +23,16 @@ type Client struct {
 
 // Hub 管理一个聊天室内的所有客户端
 type Hub struct {
-	clients    map[*Client]bool // 当前房间的客户端集合
-	broadcast  chan []byte      // 广播消息的通道
-	register   chan *Client     // 注册客户端的通道
-	unregister chan *Client     // 注销客户端的通道
-	onEmpty    func()           // 房间空时的回调函数
+	clients    map[*Client]bool
+	broadcast  chan BroadcastMessage // 修改通道类型
+	register   chan *Client
+	unregister chan *Client
+	onEmpty    func()
 }
 
-// RoomManager 管理所有聊天室
-type RoomManager struct {
-	rooms map[string]*Hub // 房间ID到Hub的映射
-	mutex sync.Mutex      // 保证线程安全
-}
-
-func NewHub() *Hub {
-	return &Hub{
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
-	}
+type BroadcastMessage struct {
+	message []byte
+	sender  *Client
 }
 
 func (h *Hub) Run() {
@@ -55,20 +45,37 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				close(client.send)
 			}
-			// 房间空时触发销毁回调
 			if len(h.clients) == 0 && h.onEmpty != nil {
 				h.onEmpty()
 			}
-		case message := <-h.broadcast:
+		case bm := <-h.broadcast:
 			for client := range h.clients {
+				if client == bm.sender {
+					continue
+				}
 				select {
-				case client.send <- message:
+				case client.send <- bm.message:
 				default:
 					close(client.send)
 					delete(h.clients, client)
 				}
 			}
 		}
+	}
+}
+
+// RoomManager 管理所有聊天室
+type RoomManager struct {
+	rooms map[string]*Hub // 房间ID到Hub的映射
+	mutex sync.Mutex      // 保证线程安全
+}
+
+func NewHub() *Hub {
+	return &Hub{
+		broadcast:  make(chan BroadcastMessage),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		clients:    make(map[*Client]bool),
 	}
 }
 
@@ -86,7 +93,7 @@ func (c *Client) readPump(hub *Hub) {
 			}
 			break
 		}
-		hub.broadcast <- message
+		hub.broadcast <- BroadcastMessage{message: message, sender: c}
 	}
 }
 
